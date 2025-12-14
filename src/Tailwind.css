@@ -1,5 +1,0 @@
-# Tailwind CSS 설치
-npm install -D tailwindcss postcss autoprefixer
-
-# Tailwind 설정 파일 생성
-npx tailwindcss init -p
