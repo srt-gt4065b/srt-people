@@ -40,41 +40,56 @@
         const db = getFirestore(app);
         let duplicatesToRemove = [];
 
-        window.scanDuplicates = async () => {
-            const status = document.getElementById('status');
-            const resultList = document.getElementById('resultList');
-            status.innerText = "데이터 조회 중...";
-            resultList.innerHTML = "";
-            duplicatesToRemove = [];
+        // ... (Firebase 초기화 부분은 동일)
 
-            const querySnapshot = await getDocs(collection(db, "srt_members"));
-            const seen = new Map(); // key: name+birthYear, value: first_doc_id
+window.scanDuplicates = async () => {
+    const status = document.getElementById('status');
+    const resultList = document.getElementById('resultList');
+    status.innerText = "데이터 조회 중...";
+    resultList.innerHTML = "";
+    duplicatesToRemove = [];
 
-            querySnapshot.forEach((docSnap) => {
-                const data = docSnap.data();
-                const uniqueKey = `${data.name}_${data.birthYear}`;
+    try {
+        // 🔥 경로 수정: 이미지에 나온 전체 경로를 입력해야 합니다.
+        const membersCollection = collection(db, "artifacts/srt-people-prod/public/data/srt_members");
+        const querySnapshot = await getDocs(membersCollection);
+        
+        console.log("조회된 문서 수:", querySnapshot.size); // 개발자 도구(F12)에서 확인용
 
-                if (seen.has(uniqueKey)) {
-                    // 중복 발견
-                    duplicatesToRemove.push({ id: docSnap.id, ...data });
-                    const div = document.createElement('div');
-                    div.className = "p-3 border-l-4 border-red-500 bg-red-50 text-sm";
-                    div.innerHTML = `<strong>중복 발견:</strong> ${data.name} (${data.birthYear}년생) - 소속: ${data.group} <br> <span class="text-gray-400">ID: ${docSnap.id}</span>`;
-                    resultList.appendChild(div);
-                } else {
-                    seen.set(uniqueKey, docSnap.id);
-                }
-            });
+        const seen = new Map();
 
-            if (duplicatesToRemove.length > 0) {
-                status.innerHTML = `<span class="text-red-600">총 ${duplicatesToRemove.length}건의 중복 항목을 찾았습니다.</span>`;
-                document.getElementById('deleteBtn').classList.remove('hidden');
+        querySnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            // 중복 기준: 이름 + 생년 (필요시 data.phone 등을 추가하세요)
+            const uniqueKey = `${data.name}_${data.birthYear}`;
+
+            if (seen.has(uniqueKey)) {
+                duplicatesToRemove.push({ id: docSnap.id, ...data });
+                const div = document.createElement('div');
+                div.className = "p-3 border-l-4 border-red-500 bg-red-50 text-sm mb-2";
+                div.innerHTML = `
+                    <strong>중복 발견:</strong> ${data.name} (${data.birthYear}년생) 
+                    <br> 소속: ${data.group} / 지역: ${data.region}
+                    <br> <span class="text-xs text-gray-400">문서 ID: ${docSnap.id}</span>
+                `;
+                resultList.appendChild(div);
             } else {
-                status.innerText = "중복된 데이터가 없습니다.";
-                document.getElementById('deleteBtn').classList.add('hidden');
+                seen.set(uniqueKey, docSnap.id);
             }
-        };
+        });
 
+        if (duplicatesToRemove.length > 0) {
+            status.innerHTML = `<span class="text-red-600 font-bold">총 ${duplicatesToRemove.length}건의 중복 항목을 찾았습니다.</span>`;
+            document.getElementById('deleteBtn').classList.remove('hidden');
+        } else {
+            status.innerText = "스캔 완료: 중복된 데이터가 없습니다. (총 " + querySnapshot.size + "명 분석)";
+            document.getElementById('deleteBtn').classList.add('hidden');
+        }
+    } catch (error) {
+        console.error("에러 발생:", error);
+        status.innerText = "데이터를 불러오는 중 오류가 발생했습니다. (F12 콘솔 확인)";
+    }
+};
         window.deleteDuplicates = async () => {
             if (!confirm("정말로 중복된 데이터를 DB에서 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) return;
 
