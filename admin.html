@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SRT Admin - 데이터 정제</title>
+    <title>SRT Admin - 중복 데이터 완벽 제거</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 p-8">
@@ -10,100 +10,105 @@
         <h1 class="text-2xl font-bold mb-4 text-blue-600">SRT Members DB 관리자</h1>
         
         <div class="bg-blue-50 p-4 rounded mb-6">
-            <p class="text-sm text-blue-800 italic">"성명"과 "생년(birthYear)"이 완벽히 일치하는 데이터를 중복으로 간주합니다.</p>
+            <p class="text-sm text-blue-800">1. <strong>중복 데이터 스캔</strong>을 누르세요.</p>
+            <p class="text-sm text-blue-800 font-bold italic">※ "성명"과 "생년"이 완벽히 일치하는 데이터를 찾아 삭제합니다.</p>
         </div>
 
         <div class="flex gap-2 mb-6">
             <button onclick="scanDuplicates()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">중복 데이터 스캔</button>
-            <button id="deleteBtn" onclick="deleteDuplicates()" class="bg-red-500 text-white px-4 py-2 rounded hidden hover:bg-red-600">중복 삭제 실행</button>
+            <button id="deleteBtn" onclick="deleteDuplicates()" class="bg-red-500 text-white px-4 py-2 rounded hidden hover:bg-red-600 font-bold">중복 삭제 실행 (DB 반영)</button>
         </div>
 
-        <div id="status" class="mb-4 font-semibold"></div>
+        <div id="status" class="mb-4 font-semibold text-lg"></div>
         <div id="resultList" class="space-y-2"></div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, deleteDoc, doc, query } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // ⚠️ 본인의 Firebase 설정값으로 교체하세요
         const firebaseConfig = {
             apiKey: "AIzaSyCEcu-um43cfv89xX8znl2DYinlR8KHrlU",
-  authDomain: "srt-people.firebaseapp.com",
-  projectId: "srt-people",
-  storageBucket: "srt-people.firebasestorage.app",
-  messagingSenderId: "246383141664",
-  appId: "1:246383141664:web:bc0f03928643b866f3ad45"
+            authDomain: "srt-people.firebaseapp.com",
+            projectId: "srt-people",
+            storageBucket: "srt-people.firebasestorage.app",
+            messagingSenderId: "246383141664",
+            appId: "1:246383141664:web:bc0f03928643b866f3ad45"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        
+        // 🔥 매우 중요: 실제 데이터가 들어있는 전체 경로
+        const FULL_PATH = "artifacts/srt-people-prod/public/data/srt_members";
         let duplicatesToRemove = [];
 
-        // ... (Firebase 초기화 부분은 동일)
+        window.scanDuplicates = async () => {
+            const status = document.getElementById('status');
+            const resultList = document.getElementById('resultList');
+            status.innerText = "서버에서 최신 데이터를 가져오는 중...";
+            resultList.innerHTML = "";
+            duplicatesToRemove = [];
 
-window.scanDuplicates = async () => {
-    const status = document.getElementById('status');
-    const resultList = document.getElementById('resultList');
-    status.innerText = "데이터 조회 중...";
-    resultList.innerHTML = "";
-    duplicatesToRemove = [];
+            try {
+                const querySnapshot = await getDocs(collection(db, FULL_PATH));
+                const seen = new Map();
 
-    try {
-        // 🔥 경로 수정: 이미지에 나온 전체 경로를 입력해야 합니다.
-        const membersCollection = collection(db, "artifacts/srt-people-prod/public/data/srt_members");
-        const querySnapshot = await getDocs(membersCollection);
-        
-        console.log("조회된 문서 수:", querySnapshot.size); // 개발자 도구(F12)에서 확인용
+                querySnapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    // 이름과 생년 조합으로 중복 체크
+                    const uniqueKey = `${data.name}_${data.birthYear}`;
 
-        // 🔥 핵심: 캐시를 사용하지 않고 서버에서 직접 가져오기 위해 기본 query 사용
-        const querySnapshot = await getDocs(membersCollection);
-        const seen = new Map();
+                    if (seen.has(uniqueKey)) {
+                        duplicatesToRemove.push({ id: docSnap.id, ...data });
+                        const div = document.createElement('div');
+                        div.className = "p-3 border-l-4 border-red-500 bg-red-50 text-sm mb-2";
+                        div.innerHTML = `
+                            <strong>중복 발견:</strong> ${data.name} (${data.birthYear}년생) 
+                            <br> 소속: ${data.group} / 지역: ${data.region}
+                            <br> <span class="text-xs text-gray-400 font-mono">ID: ${docSnap.id}</span>
+                        `;
+                        resultList.appendChild(div);
+                    } else {
+                        seen.set(uniqueKey, docSnap.id);
+                    }
+                });
 
-        querySnapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            // 중복 기준: 이름 + 생년 (필요시 data.phone 등을 추가하세요)
-            const uniqueKey = `${data.name}_${data.birthYear}`;
-
-            if (seen.has(uniqueKey)) {
-                duplicatesToRemove.push({ id: docSnap.id, ...data });
-                const div = document.createElement('div');
-                div.className = "p-3 border-l-4 border-red-500 bg-red-50 text-sm mb-2";
-                div.innerHTML = `
-                    <strong>중복 발견:</strong> ${data.name} (${data.birthYear}년생) 
-                    <br> 소속: ${data.group} / 지역: ${data.region}
-                    <br> <span class="text-xs text-gray-400">문서 ID: ${docSnap.id}</span>
-                `;
-                resultList.appendChild(div);
-            } else {
-                seen.set(uniqueKey, docSnap.id);
+                if (duplicatesToRemove.length > 0) {
+                    status.innerHTML = `<span class="text-red-600">총 ${duplicatesToRemove.length}건의 중복 항목을 찾았습니다.</span>`;
+                    document.getElementById('deleteBtn').classList.remove('hidden');
+                } else {
+                    status.innerText = `스캔 완료: 중복 데이터가 없습니다. (총 ${querySnapshot.size}명 분석)`;
+                    document.getElementById('deleteBtn').classList.add('hidden');
+                }
+            } catch (error) {
+                console.error(error);
+                status.innerText = "에러 발생: " + error.message;
             }
-        });
+        };
 
-        if (duplicatesToRemove.length > 0) {
-            status.innerHTML = `<span class="text-red-600 font-bold">총 ${duplicatesToRemove.length}건의 중복 항목을 찾았습니다.</span>`;
-            document.getElementById('deleteBtn').classList.remove('hidden');
-        } else {
-            status.innerText = "스캔 완료: 중복된 데이터가 없습니다. (총 " + querySnapshot.size + "명 분석)";
-            document.getElementById('deleteBtn').classList.add('hidden');
-        }
-    } catch (error) {
-        console.error("에러 발생:", error);
-        status.innerText = "데이터를 불러오는 중 오류가 발생했습니다. (F12 콘솔 확인)";
-    }
-};
         window.deleteDuplicates = async () => {
-            if (!confirm("정말로 중복된 데이터를 DB에서 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) return;
+            if (!confirm(`조회된 ${duplicatesToRemove.length}개의 데이터를 DB에서 영구 삭제하시겠습니까?`)) return;
 
             const status = document.getElementById('status');
-            status.innerText = "삭제 중...";
+            let count = 0;
 
-            for (const item of duplicatesToRemove) {
-                await deleteDoc(doc(db, "srt_members", item.id));
+            try {
+                for (const item of duplicatesToRemove) {
+                    count++;
+                    status.innerText = `삭제 진행 중... (${count}/${duplicatesToRemove.length})`;
+                    
+                    // 🔥 수정된 포인트: 조회할 때와 동일한 전체 경로를 사용해야 삭제됩니다.
+                    const docRef = doc(db, FULL_PATH, item.id);
+                    await deleteDoc(docRef);
+                }
+
+                alert("성공적으로 삭제되었습니다. 페이지를 새로고침합니다.");
+                location.reload();
+            } catch (error) {
+                console.error(error);
+                alert("삭제 중 오류가 발생했습니다: " + error.message);
             }
-
-            alert("삭제가 완료되었습니다.");
-            location.reload();
         };
     </script>
 </body>
