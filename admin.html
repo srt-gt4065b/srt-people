@@ -56,6 +56,8 @@ window.scanDuplicates = async () => {
         
         console.log("조회된 문서 수:", querySnapshot.size); // 개발자 도구(F12)에서 확인용
 
+        // 🔥 핵심: 캐시를 사용하지 않고 서버에서 직접 가져오기 위해 기본 query 사용
+        const querySnapshot = await getDocs(membersCollection);
         const seen = new Map();
 
         querySnapshot.forEach((docSnap) => {
