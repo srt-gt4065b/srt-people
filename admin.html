@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>SRT Admin - 데이터 정제</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md">
+        <h1 class="text-2xl font-bold mb-4 text-blue-600">SRT Members DB 관리자</h1>
+        
+        <div class="bg-blue-50 p-4 rounded mb-6">
+            <p class="text-sm text-blue-800 italic">"성명"과 "생년(birthYear)"이 완벽히 일치하는 데이터를 중복으로 간주합니다.</p>
+        </div>
+
+        <div class="flex gap-2 mb-6">
+            <button onclick="scanDuplicates()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">중복 데이터 스캔</button>
+            <button id="deleteBtn" onclick="deleteDuplicates()" class="bg-red-500 text-white px-4 py-2 rounded hidden hover:bg-red-600">중복 삭제 실행</button>
+        </div>
+
+        <div id="status" class="mb-4 font-semibold"></div>
+        <div id="resultList" class="space-y-2"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // ⚠️ 본인의 Firebase 설정값으로 교체하세요
+        const firebaseConfig = {
+            apiKey: "AIzaSyCEcu-um43cfv89xX8znl2DYinlR8KHrlU",
+  authDomain: "srt-people.firebaseapp.com",
+  projectId: "srt-people",
+  storageBucket: "srt-people.firebasestorage.app",
+  messagingSenderId: "246383141664",
+  appId: "1:246383141664:web:bc0f03928643b866f3ad45"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        let duplicatesToRemove = [];
+
+        window.scanDuplicates = async () => {
+            const status = document.getElementById('status');
+            const resultList = document.getElementById('resultList');
+            status.innerText = "데이터 조회 중...";
+            resultList.innerHTML = "";
+            duplicatesToRemove = [];
+
+            const querySnapshot = await getDocs(collection(db, "srt_members"));
+            const seen = new Map(); // key: name+birthYear, value: first_doc_id
+
+            querySnapshot.forEach((docSnap) => {
+                const data = docSnap.data();
+                const uniqueKey = `${data.name}_${data.birthYear}`;
+
+                if (seen.has(uniqueKey)) {
+                    // 중복 발견
+                    duplicatesToRemove.push({ id: docSnap.id, ...data });
+                    const div = document.createElement('div');
+                    div.className = "p-3 border-l-4 border-red-500 bg-red-50 text-sm";
+                    div.innerHTML = `<strong>중복 발견:</strong> ${data.name} (${data.birthYear}년생) - 소속: ${data.group} <br> <span class="text-gray-400">ID: ${docSnap.id}</span>`;
+                    resultList.appendChild(div);
+                } else {
+                    seen.set(uniqueKey, docSnap.id);
+                }
+            });
+
+            if (duplicatesToRemove.length > 0) {
+                status.innerHTML = `<span class="text-red-600">총 ${duplicatesToRemove.length}건의 중복 항목을 찾았습니다.</span>`;
+                document.getElementById('deleteBtn').classList.remove('hidden');
+            } else {
+                status.innerText = "중복된 데이터가 없습니다.";
+                document.getElementById('deleteBtn').classList.add('hidden');
+            }
+        };
+
+        window.deleteDuplicates = async () => {
+            if (!confirm("정말로 중복된 데이터를 DB에서 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) return;
+
+            const status = document.getElementById('status');
+            status.innerText = "삭제 중...";
+
+            for (const item of duplicatesToRemove) {
+                await deleteDoc(doc(db, "srt_members", item.id));
+            }
+
+            alert("삭제가 완료되었습니다.");
+            location.reload();
+        };
+    </script>
+</body>
+</html>
